@@ -10,9 +10,10 @@ javascript: (function () {
       return [];
     }
 
-    // Only search for tables within the plandatatableblock section
-    const tables = planDataTableBlock.querySelectorAll("table");
-    console.log("🚀 ~ extractTableData ~ tables:", tables);
+    // Only search for direct table elements (not nested tables)
+    const tables = planDataTableBlock.querySelectorAll(
+      ":scope > table, :scope > * > table"
+    );
     const tableData = [];
 
     tables.forEach((table, tableIndex) => {
@@ -20,39 +21,54 @@ javascript: (function () {
         tableIndex: tableIndex,
         tableId: table.id || `table_${tableIndex}`,
         tableClass: table.className || "",
-        headers: [],
+        headers: {},
         rows: [],
       };
 
-      // Extract headers
-      const headerRows = table.querySelectorAll("thead tr, tr:first-child");
-      if (headerRows.length > 0) {
-        const headerCells = headerRows[0].querySelectorAll("th, td");
-        headerCells.forEach((cell) => {
-          tableInfo.headers.push(cell.textContent.trim());
-        });
-      }
-
       // Extract data rows
       const dataRows = table.querySelectorAll("tbody tr, tr:not(:first-child)");
-      dataRows.forEach((row) => {
+
+      let headersAreHere = 0;
+
+      dataRows.forEach((row, rowIndex) => {
         const cells = row.querySelectorAll("td, th");
+        const dataCells = row.querySelectorAll("td");
+
+        if (dataCells.length === 0) {
+          headersAreHere = 1;
+          return;
+        }
+
         if (cells.length > 0) {
           const rowData = {};
 
           // Create object with header names as keys
           cells.forEach((cell, cellIndex) => {
             const headerName =
-              tableInfo.headers[cellIndex] || `column_${cellIndex}`;
+              Object.keys(tableInfo.headers)[cellIndex] ||
+              `column_${cellIndex}`;
             rowData[headerName] = cell.textContent.trim();
           });
 
-          tableInfo.rows.push(rowData);
+          if (rowIndex === headersAreHere) {
+            const headerCells = row.querySelectorAll("th");
+            headerCells.forEach((cell) => {
+              tableInfo.headers[cell.textContent.trim()] = Object.keys(
+                tableInfo.headers
+              ).length;
+            });
+            return;
+          } else {
+            tableInfo.rows.push(rowData);
+          }
         }
       });
 
       // Only add tables that have data
-      if (tableInfo.headers.length > 0 || tableInfo.rows.length > 0) {
+      if (
+        Object.keys(tableInfo.headers).length > 0 ||
+        tableInfo.rows.length > 0
+      ) {
         tableData.push(tableInfo);
       }
     });
@@ -68,7 +84,7 @@ javascript: (function () {
   console.log(`Found ${extractedData.length} tables with data`);
   extractedData.forEach((table, index) => {
     console.log(
-      `Table ${index + 1}: ${table.headers.length} headers, ${
+      `Table ${index + 1}: ${Object.keys(table.headers).length} headers, ${
         table.rows.length
       } rows`
     );
