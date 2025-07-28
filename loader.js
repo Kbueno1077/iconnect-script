@@ -4,32 +4,8 @@ javascript: (function () {
   const urls = [
     "file:///Users/kevinbueno/Documents/Work/iconnect-script/pages/Harmony.html",
     "file:///Users/kevinbueno/Documents/Work/iconnect-script/pages/Harmony2.html",
+    "file:///Users/kevinbueno/Documents/Work/iconnect-script/pages/Harmony3.html",
   ];
-
-  // Load sql.js library if not already loaded
-  function loadSqlJs() {
-    return new Promise((resolve, reject) => {
-      if (window.SQL) {
-        resolve(window.SQL);
-        return;
-      }
-
-      const script = document.createElement("script");
-      script.src =
-        "https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js";
-      script.onload = () => {
-        window
-          .initSqlJs({
-            locateFile: (file) =>
-              `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}`,
-          })
-          .then(resolve)
-          .catch(reject);
-      };
-      script.onerror = reject;
-      document.head.appendChild(script);
-    });
-  }
 
   function extractTableData() {
     const targetTable = document.getElementById(
@@ -143,16 +119,22 @@ javascript: (function () {
         }
       });
 
+      // Add consumerName to each row
+      if (rowIndex !== headersAreHere) {
+        rowData.consumerName = tableInfo.consumerName;
+      }
+
       if (rowIndex !== headersAreHere) {
         tableInfo.rows.push(rowData);
       }
     });
 
+    console.log("Extracted table info:", tableInfo);
     return tableInfo;
   }
 
-  // Check if user has existing database and ask for file selection
-  async function promptForExistingDatabase() {
+  // Check if user has existing JSON file and ask for file selection
+  async function promptForExistingJsonFile() {
     return new Promise((resolve) => {
       const modal = document.createElement("div");
       modal.style.cssText = ` position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.6); z-index: 10000; display: flex; align-items: center; justify-content: center; font-family: system-ui, -apple-system, sans-serif; `;
@@ -160,12 +142,12 @@ javascript: (function () {
       dialog.style.cssText = ` background: white; padding: 32px; border-radius: 12px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2); max-width: 440px; width: 90%; `;
       const todayStr = new Date().toISOString().split("T")[0];
       dialog.innerHTML = ` 
-        <h3 style="margin: 0 0 16px; font-size: 24px; color: #1a1a1a;">Database Options</h3> 
+        <h3 style="margin: 0 0 16px; font-size: 24px; color: #1a1a1a;">JSON File Options</h3> 
         <p style="margin: 0 0 24px; color: #444; font-size: 16px; line-height: 1.5;"> 
-          Do you have an existing database for today (${todayStr})? 
+          Do you have an existing JSON file to append data to? 
         </p> 
         <div style="margin: 24px 0; position: relative;"> 
-          <input type="file" id="dbFile" accept=".db,.sqlite,.sqlite3" style="
+          <input type="file" id="jsonFile" accept=".json" style="
             margin-bottom: 16px; 
             width: 100%; 
             padding: 8px; 
@@ -221,12 +203,12 @@ javascript: (function () {
             font-weight: 500; 
             transition: all 0.2s;
             display: none;
-          ">Use Chosen Database</button> 
+          ">Append to File</button> 
         </div> `;
       modal.appendChild(dialog);
       document.body.appendChild(modal);
 
-      const fileInput = dialog.querySelector("#dbFile");
+      const fileInput = dialog.querySelector("#jsonFile");
       const createNewBtn = dialog.querySelector("#createNew");
       const useExistingBtn = dialog.querySelector("#useExisting");
       const removeFileBtn = dialog.querySelector("#removeFile");
@@ -277,7 +259,7 @@ javascript: (function () {
       useExistingBtn.onclick = () => {
         const file = fileInput.files[0];
         if (!file) {
-          alert("Please select a database file first");
+          alert("Please select a JSON file first");
           return;
         }
         document.body.removeChild(modal);
@@ -291,188 +273,271 @@ javascript: (function () {
     });
   }
 
-  // Read existing database file
-  function readDatabaseFile(file) {
+  // Read existing JSON file
+  function readJsonFile(file) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.onload = () => resolve(new Uint8Array(reader.result));
+      reader.onload = () => {
+        try {
+          const jsonData = JSON.parse(reader.result);
+          resolve(jsonData);
+        } catch (error) {
+          reject(new Error("Invalid JSON file"));
+        }
+      };
       reader.onerror = reject;
-      reader.readAsArrayBuffer(file);
+      reader.readAsText(file);
     });
   }
 
-  async function createOrUpdateSqliteDB(data) {
+  function saveAsJson(data) {
     try {
-      const SQL = await loadSqlJs();
-      const todayStr = new Date().toISOString().split("T")[0];
+      console.log("Starting JSON save process...");
 
-      // Ask user about existing database
-      const { action, file } = await promptForExistingDatabase();
+      const todayStr = new Date().toISOString().split("T")[0];
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+
+      // Create JSON data
+      const jsonData = {
+        exportDate: new Date().toISOString(),
+        consumerName: data.consumerName,
+        recordsAmount: data.recordsAmount,
+        reportDate: data.reportDate,
+        tableInfo: {
+          tableId: data.tableId,
+          tableClass: data.tableClass,
+          headers: data.headers,
+          rows: data.rows,
+        },
+      };
+
+      console.log("JSON data prepared:", jsonData);
+
+      // Convert to JSON string with pretty formatting
+      const jsonString = JSON.stringify(jsonData, null, 2);
+      console.log("JSON string length:", jsonString.length);
+
+      // Create filename
+      const filename = `json_data_${todayStr}_${timestamp}.json`;
+
+      console.log("Filename:", filename);
+
+      // Create and download file
+      const blob = new Blob([jsonString], { type: "application/json" });
+      console.log("Blob created, size:", blob.size);
+
+      const url = URL.createObjectURL(blob);
+      console.log("Object URL created:", url);
+
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.style.display = "none"; // Hide the link
+
+      // Add to body, click, then remove
+      document.body.appendChild(a);
+      console.log("Link added to body, attempting click...");
+
+      // Try different approaches for triggering download
+      try {
+        a.click();
+        console.log("Click triggered successfully");
+      } catch (clickError) {
+        console.log("Regular click failed, trying manual event:", clickError);
+        const event = new MouseEvent("click", {
+          view: window,
+          bubbles: true,
+          cancelable: true,
+        });
+        a.dispatchEvent(event);
+      }
+
+      // Clean up
+      setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        console.log("Cleanup completed");
+      }, 100);
+
+      console.log("✅ JSON data export process completed!");
+      console.log(`📊 Export Summary:`);
+      console.log(`   - Consumer: ${data.consumerName}`);
+      console.log(`   - Records: ${data.recordsAmount}`);
+      console.log(`   - Rows exported: ${data.rows.length}`);
+      console.log(`   - Headers: ${Object.keys(data.headers).length}`);
+
+      return true;
+    } catch (error) {
+      console.error("❌ Error saving JSON data:", error);
+      console.error("Error stack:", error.stack);
+
+      // Fallback: copy to clipboard
+      try {
+        const jsonString = JSON.stringify(data, null, 2);
+        navigator.clipboard
+          .writeText(jsonString)
+          .then(() => {
+            console.log("📋 Data copied to clipboard as fallback");
+            alert("Download failed, but data has been copied to clipboard!");
+          })
+          .catch((clipboardError) => {
+            console.error("Clipboard fallback also failed:", clipboardError);
+            alert(
+              "Download and clipboard both failed. Check console for data."
+            );
+          });
+      } catch (fallbackError) {
+        console.error("Fallback failed:", fallbackError);
+      }
+
+      return false;
+    }
+  }
+
+  async function createOrUpdateJsonFile(data) {
+    try {
+      // Ask user about existing JSON file
+      const { action, file } = await promptForExistingJsonFile();
 
       if (action === "cancel") {
         console.log("❌ Operation cancelled by user");
         return false;
       }
 
-      let db;
-      let isNewDatabase = false;
+      let existingData = null;
+      let isNewFile = false;
 
       if (action === "append" && file) {
-        console.log("📂 Loading existing database...");
-        const fileData = await readDatabaseFile(file);
-        db = new SQL.Database(fileData);
-
-        // Check if tables exist and have the right structure
+        console.log("📂 Loading existing JSON file...");
         try {
-          const tables = db.exec(
-            "SELECT name FROM sqlite_master WHERE type='table'"
-          );
-          console.log("📋 Existing tables:", tables);
+          existingData = await readJsonFile(file);
+          console.log("📋 Existing JSON data loaded:", existingData);
         } catch (error) {
-          console.warn("⚠️ Could not read existing database, creating new one");
-          db.close();
-          db = new SQL.Database();
-          isNewDatabase = true;
-        }
-      } else {
-        console.log("🆕 Creating new database...");
-        db = new SQL.Database();
-        isNewDatabase = true;
-      }
-
-      const headers = Object.keys(data.headers);
-
-      // Create tables if they don't exist
-      if (isNewDatabase) {
-        db.run(`CREATE TABLE IF NOT EXISTS clients (
-          consumerName TEXT PRIMARY KEY,
-          recordsAmount INTEGER,
-          reportDate TEXT
-        )`);
-
-        const columns = headers.map((header) => `"${header}" TEXT`).join(", ");
-        db.run(`CREATE TABLE IF NOT EXISTS data (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          consumerName TEXT,
-          ${columns},
-          FOREIGN KEY(consumerName) REFERENCES clients(consumerName)
-        )`);
-      }
-
-      // Check if client already exists
-      const existingClient = db.exec(
-        "SELECT * FROM clients WHERE consumerName = ?",
-        [data.consumerName]
-      );
-
-      if (existingClient.length > 0) {
-        console.log("👤 Updating existing client record...");
-        // Update client record
-        db.run(
-          "UPDATE clients SET recordsAmount = recordsAmount + ?, reportDate = ? WHERE consumerName = ?",
-          [
-            parseInt(data.recordsAmount) || 0,
-            data.reportDate,
-            data.consumerName,
-          ]
-        );
-      } else {
-        console.log("👤 Adding new client record...");
-        // Insert new client record
-        db.run(
-          "INSERT INTO clients (consumerName, recordsAmount, reportDate) VALUES (?, ?, ?)",
-          [data.consumerName, data.recordsAmount, data.reportDate]
-        );
-      }
-
-      // Check for duplicate records before inserting
-      const placeholders = headers.map(() => "?").join(", ");
-      const insertSql = `INSERT INTO data (consumerName, ${headers
-        .map((h) => `"${h}"`)
-        .join(", ")}) 
-        VALUES (?, ${placeholders})`;
-
-      let insertedCount = 0;
-      let duplicateCount = 0;
-
-      data.rows.forEach((row) => {
-        // Create a unique identifier for the record (you can customize this logic)
-        const uniqueFields = ["Date", "Service Code", "Units"]; // Adjust based on your data
-        const checkConditions = uniqueFields
-          .filter((field) => headers.includes(field))
-          .map((field) => `"${field}" = ?`)
-          .join(" AND ");
-
-        if (checkConditions) {
-          const checkValues = uniqueFields
-            .filter((field) => headers.includes(field))
-            .map((field) => row[field] || null);
-
-          const existing = db.exec(
-            `SELECT id FROM data WHERE consumerName = ? AND ${checkConditions}`,
-            [data.consumerName, ...checkValues]
+          console.warn(
+            "⚠️ Could not read existing JSON file, creating new one"
           );
-
-          if (existing.length > 0) {
-            duplicateCount++;
-            console.log("🔄 Skipping duplicate record:", row);
-            return;
-          }
+          existingData = null;
+          isNewFile = true;
         }
-
-        // Insert new record
-        const values = [
-          data.consumerName,
-          ...headers.map((header) => row[header] || null),
-        ];
-        db.run(insertSql, values);
-        insertedCount++;
-      });
-
-      console.log(`✅ Inserted ${insertedCount} new records`);
-      if (duplicateCount > 0) {
-        console.log(`⚠️ Skipped ${duplicateCount} duplicate records`);
+      } else {
+        console.log("🆕 Creating new JSON file...");
+        isNewFile = true;
       }
 
-      // Export updated database
-      const binaryArray = db.export();
-      const blob = new Blob([binaryArray], { type: "application/x-sqlite3" });
+      // Prepare the data to save
+      let finalData;
+      if (isNewFile) {
+        // Create new simple structure
+        finalData = {
+          consumerNames: [data.consumerName],
+          recordsAmount: data.recordsAmount,
+          reportDate: data.reportDate,
+          headers: data.headers,
+          rows: data.rows,
+        };
+      } else {
+        // Use existing data and append new data
+        finalData = existingData;
+
+        // Add consumer name if not already present
+        if (!finalData.consumerNames) {
+          finalData.consumerNames = [];
+        }
+        if (!finalData.consumerNames.includes(data.consumerName)) {
+          finalData.consumerNames.push(data.consumerName);
+        }
+
+        // Append new rows to existing rows
+        if (finalData.rows) {
+          finalData.rows = [...finalData.rows, ...data.rows];
+        } else {
+          finalData.rows = data.rows;
+        }
+
+        // Update records amount
+        const existingRecords = parseInt(finalData.recordsAmount || 0);
+        const newRecords = parseInt(data.recordsAmount || 0);
+        finalData.recordsAmount = (existingRecords + newRecords).toString();
+
+        // Replace report date with new one
+        finalData.reportDate = data.reportDate;
+
+        // Update headers if needed (use new headers if existing ones are empty)
+        if (!finalData.headers || Object.keys(finalData.headers).length === 0) {
+          finalData.headers = data.headers;
+        }
+      }
+
+      // Convert to JSON string
+      const jsonString = JSON.stringify(finalData, null, 2);
+      console.log("Final JSON data prepared, size:", jsonString.length);
+
+      // Create filename
+      const todayStr = new Date().toISOString().split("T")[0];
+      const filename = isNewFile
+        ? `table_data_${data.consumerName.replace(
+            /[^a-zA-Z0-9]/g,
+            "_"
+          )}_${todayStr}.json`
+        : file.name;
+
+      // Create and download file
+      const blob = new Blob([jsonString], { type: "application/json" });
       const url = URL.createObjectURL(blob);
 
       const a = document.createElement("a");
       a.href = url;
-      a.download = `table_data_${todayStr}.db`;
+      a.download = filename;
+      a.style.display = "none";
+
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-      console.log("✅ SQLite database updated and downloaded!");
+      console.log("✅ JSON file updated and downloaded!");
+      console.log(`📊 File Summary:`);
+      console.log(`   - Consumers: ${finalData.consumerNames.join(", ")}`);
+      console.log(`   - Total records: ${finalData.recordsAmount}`);
+      console.log(`   - Total rows: ${finalData.rows.length}`);
 
-      // Show summary
-      const totalRecords = db.exec("SELECT COUNT(*) as count FROM data");
-      const totalClients = db.exec("SELECT COUNT(*) as count FROM clients");
-      console.log(`📊 Database Summary:`);
-      console.log(`   - Total clients: ${totalClients[0]?.values[0][0] || 0}`);
-      console.log(`   - Total records: ${totalRecords[0]?.values[0][0] || 0}`);
-
-      db.close();
       return true;
     } catch (error) {
-      console.error("❌ Error creating/updating SQLite database:", error);
+      console.error("❌ Error creating/updating JSON file:", error);
       return false;
     }
   }
 
   // Main execution
   async function main() {
+    console.log("Main function starting...");
+
     const data = extractTableData();
 
     if (data) {
-      console.log("🚀 ~ Result:", data);
-      await createOrUpdateSqliteDB(data);
+      console.log("🚀 Table data extracted:", data);
+
+      // Check if we have any actual data
+      if (data.rows && data.rows.length > 0) {
+        console.log("Data has rows, proceeding with save...");
+        await createOrUpdateJsonFile(data);
+      } else {
+        console.log("⚠️ No rows found in extracted data");
+        console.log("Headers found:", Object.keys(data.headers));
+        // Still try to save even if no rows
+        await createOrUpdateJsonFile(data);
+      }
     } else {
       console.log("❌ No table data found");
+
+      // Debug: List all tables on page
+      const allTables = document.getElementsByTagName("table");
+      console.log(`Found ${allTables.length} tables on page:`);
+      for (let i = 0; i < allTables.length; i++) {
+        console.log(
+          `  Table ${i}: ID="${allTables[i].id}", Class="${allTables[i].className}"`
+        );
+      }
     }
 
     console.log("--------------------------------");
@@ -481,5 +546,5 @@ javascript: (function () {
   }
 
   // Execute main function
-  main();
+  return main();
 })();
