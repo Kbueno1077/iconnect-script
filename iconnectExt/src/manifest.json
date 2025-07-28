@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "Table Data Extractor",
+  "version": "1.0.0",
+  "description": "Extract table data from web pages using your existing Chrome browser",
+  "permissions": ["activeTab", "storage", "downloads"],
+  "host_permissions": ["file://*"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Table Extractor"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"]
+    }
+  ],
+  "background": {
+    "service_worker": "background.js"
+  }
+}

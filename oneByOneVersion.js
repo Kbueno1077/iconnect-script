@@ -142,69 +142,69 @@ javascript: (function () {
       dialog.style.cssText = ` background: white; padding: 32px; border-radius: 12px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2); max-width: 440px; width: 90%; `;
       const todayStr = new Date().toISOString().split("T")[0];
       dialog.innerHTML = ` 
-        <h3 style="margin: 0 0 16px; font-size: 24px; color: #1a1a1a;">JSON File Options</h3> 
-        <p style="margin: 0 0 24px; color: #444; font-size: 16px; line-height: 1.5;"> 
-          Do you have an existing JSON file to append data to? 
-        </p> 
-        <div style="margin: 24px 0; position: relative;"> 
-          <input type="file" id="jsonFile" accept=".json" style="
-            margin-bottom: 16px; 
-            width: 100%; 
-            padding: 8px; 
-            border: 2px solid #e0e0e0; 
-            border-radius: 6px; 
-            font-size: 14px;
-          ">
-          <button id="removeFile" style="
-            display: none;
-            position: absolute;
-            right: 10px;
-            top: 8px;
-            background: #ef4444;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            padding: 4px 8px;
-            cursor: pointer;
-            font-size: 12px;
-          ">Remove</button>
-        </div> 
-        <div style="display: flex; gap: 12px; justify-content: flex-end;"> 
-          <button id="cancel" style="
-            padding: 12px 24px;
-            background: #6b7280;
-            color: white;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 16px;
-            font-weight: 500;
-            transition: all 0.2s;
-          ">Cancel</button>
-          <button id="createNew" style="
-            padding: 12px 24px; 
-            background: #0070f3; 
-            color: white; 
-            border: none; 
-            border-radius: 6px; 
-            cursor: pointer; 
-            font-size: 16px; 
-            font-weight: 500; 
-            transition: all 0.2s;
-          ">Create New</button> 
-          <button id="useExisting" style="
-            padding: 12px 24px; 
-            background: #10b981; 
-            color: white; 
-            border: none; 
-            border-radius: 6px;
-            cursor: pointer; 
-            font-size: 16px; 
-            font-weight: 500; 
-            transition: all 0.2s;
-            display: none;
-          ">Append to File</button> 
-        </div> `;
+          <h3 style="margin: 0 0 16px; font-size: 24px; color: #1a1a1a;">JSON File Options</h3> 
+          <p style="margin: 0 0 24px; color: #444; font-size: 16px; line-height: 1.5;"> 
+            Do you have an existing JSON file to append data to? 
+          </p> 
+          <div style="margin: 24px 0; position: relative;"> 
+            <input type="file" id="jsonFile" accept=".json" style="
+              margin-bottom: 16px; 
+              width: 100%; 
+              padding: 8px; 
+              border: 2px solid #e0e0e0; 
+              border-radius: 6px; 
+              font-size: 14px;
+            ">
+            <button id="removeFile" style="
+              display: none;
+              position: absolute;
+              right: 10px;
+              top: 8px;
+              background: #ef4444;
+              color: white;
+              border: none;
+              border-radius: 4px;
+              padding: 4px 8px;
+              cursor: pointer;
+              font-size: 12px;
+            ">Remove</button>
+          </div> 
+          <div style="display: flex; gap: 12px; justify-content: flex-end;"> 
+            <button id="cancel" style="
+              padding: 12px 24px;
+              background: #6b7280;
+              color: white;
+              border: none;
+              border-radius: 6px;
+              cursor: pointer;
+              font-size: 16px;
+              font-weight: 500;
+              transition: all 0.2s;
+            ">Cancel</button>
+            <button id="createNew" style="
+              padding: 12px 24px; 
+              background: #0070f3; 
+              color: white; 
+              border: none; 
+              border-radius: 6px; 
+              cursor: pointer; 
+              font-size: 16px; 
+              font-weight: 500; 
+              transition: all 0.2s;
+            ">Create New</button> 
+            <button id="useExisting" style="
+              padding: 12px 24px; 
+              background: #10b981; 
+              color: white; 
+              border: none; 
+              border-radius: 6px;
+              cursor: pointer; 
+              font-size: 16px; 
+              font-weight: 500; 
+              transition: all 0.2s;
+              display: none;
+            ">Append to File</button> 
+          </div> `;
       modal.appendChild(dialog);
       document.body.appendChild(modal);
 
