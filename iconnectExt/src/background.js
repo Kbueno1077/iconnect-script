@@ -118,6 +118,67 @@ async function extractTablesFromUrls(
 
         // Extract data from the page
         sendProgressUpdate(`Extracting table data...`);
+
+        await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          func: async () => {
+            try {
+              const CONFIG = {
+                selectors: {
+                  mainTable:
+                    "ctrlPageContainer1_ctl01_ctrlPageControlContainer_ctl00_ucSRG_adagrid",
+                  consumerName: "ctrlPageContainer1_ctl01_lblConsumer",
+                  recordsAmount:
+                    "ctrlPageContainer1_ctl01_ctrlPageControlContainer_ctl00_ucSRG_lblRecords",
+                  fallbackTableContainer: ".plandatatableblock",
+                  pageSizeInput:
+                    "ctrlPageContainer1$ctl01$ctrlPageControlContainer$ctl00$ucSRG$txtPageSize",
+                },
+              };
+
+              // Find the page size input field
+              const pageSizeInputs = document.getElementsByName(
+                CONFIG.selectors.pageSizeInput
+              );
+
+              if (!pageSizeInputs || pageSizeInputs.length === 0) {
+                console.warn(
+                  "Page size input field not found:",
+                  CONFIG.selectors.pageSizeInput
+                );
+                return;
+              }
+
+              // Get the first element from the NodeList
+              const pageSizeInput = pageSizeInputs[0];
+
+              console.log(`Setting page size to: ${amountsPerPage}`);
+
+              // Set the value
+              pageSizeInput.value = amountsPerPage;
+
+              // Force page reload to ensure changes take effect
+              // window.location.reload();
+
+              // Find and click the search button to apply the new page size
+              const searchButton = document.getElementById("cmdSearch40525");
+              if (searchButton) {
+                searchButton.click();
+              } else {
+                console.warn("Search button not found");
+              }
+
+              // Wait a moment for the page to update
+              await new Promise((resolve) => setTimeout(resolve, 10000));
+
+              console.log("Page size input updated successfully");
+            } catch (error) {
+              console.error("Error setting page size:", error);
+              throw error;
+            }
+          },
+        });
+
         const response = await chrome.tabs.sendMessage(tab.id, {
           action: "extractTableData",
           amountsPerPage: amountsPerPage,

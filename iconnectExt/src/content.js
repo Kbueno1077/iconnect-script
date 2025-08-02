@@ -42,49 +42,7 @@ async function extractTableDataWithPageSize(amountsPerPage) {
   }
 }
 
-async function setPageSize(amountsPerPage) {
-  try {
-    // Find the page size input field
-    const pageSizeInputs = document.getElementsByName(
-      CONFIG.selectors.pageSizeInput
-    );
-
-    if (!pageSizeInputs || pageSizeInputs.length === 0) {
-      console.warn(
-        "Page size input field not found:",
-        CONFIG.selectors.pageSizeInput
-      );
-      return;
-    }
-
-    // Get the first element from the NodeList
-    const pageSizeInput = pageSizeInputs[0];
-
-    console.log(`Setting page size to: ${amountsPerPage}`);
-
-    // Set the value
-    pageSizeInput.value = amountsPerPage;
-
-    // Force page reload to ensure changes take effect
-    window.location.reload();
-
-    // Find and click the search button to apply the new page size
-    // const searchButton = document.getElementById("cmdSearch40525");
-    // if (searchButton) {
-    //   searchButton.click();
-    // } else {
-    //   console.warn("Search button not found");
-    // }
-
-    // Wait a moment for the page to update
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-
-    console.log("Page size input updated successfully");
-  } catch (error) {
-    console.error("Error setting page size:", error);
-    throw error;
-  }
-}
+async function setPageSize(amountsPerPage) {}
 
 function extractTableData() {
   try {
