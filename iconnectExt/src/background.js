@@ -6,16 +6,45 @@ let currentUrlIndex = 0;
 let totalUrls = 0;
 let totalExtractedRows = 0;
 let errors = [];
+let extractionCancelled = false;
 
 // Listen for messages from popup
 chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
   if (request.action === "extractTables") {
-    extractTablesFromUrls(request.urls, sendResponse);
+    // Reset cancellation flag
+    extractionCancelled = false;
+
+    const waitTime = request.waitTime || 15;
+    const amountsPerPage = request.amountsPerPage || 50;
+    const useDateFilter = request.useDateFilter || false;
+    const startDate = request.startDate || "";
+    const endDate = request.endDate || "";
+    extractTablesFromUrls(
+      request.urls,
+      sendResponse,
+      waitTime,
+      amountsPerPage,
+      useDateFilter,
+      startDate,
+      endDate
+    );
     return true; // Keep message channel open for async response
+  } else if (request.action === "cancelExtraction") {
+    extractionCancelled = true;
+    sendResponse({ success: true, message: "Extraction cancelled" });
+    return true;
   }
 });
 
-async function extractTablesFromUrls(urls, sendResponse) {
+async function extractTablesFromUrls(
+  urls,
+  sendResponse,
+  waitTime = 15,
+  amountsPerPage = 50,
+  useDateFilter = false,
+  startDate = "",
+  endDate = ""
+) {
   try {
     // Reset state
     allExtractedData = [];
@@ -25,12 +54,36 @@ async function extractTablesFromUrls(urls, sendResponse) {
     totalExtractedRows = 0;
     errors = [];
 
-    console.log("Starting extraction of", urls.length, "URLs");
+    // Save extraction state to storage
+    const extractionState = {
+      inProgress: true,
+      status: "Initializing extraction...",
+      percentage: 0,
+      processed: 0,
+      extractedRows: 0,
+      startTime: Date.now(),
+    };
+    await chrome.storage.local.set({ extractionState: extractionState });
 
     // Send initial progress
     sendProgressUpdate();
 
     for (let i = 0; i < urls.length; i++) {
+      // Check for cancellation
+      if (extractionCancelled) {
+        console.log("Extraction cancelled by user");
+        sendProgressUpdate("Extraction cancelled by user");
+
+        // Clear extraction state
+        await chrome.storage.local.remove("extractionState");
+
+        sendResponse({
+          success: false,
+          error: "Extraction cancelled by user",
+        });
+        return;
+      }
+
       const url = urls[i];
       currentUrlIndex = i + 1;
 
@@ -48,12 +101,16 @@ async function extractTablesFromUrls(urls, sendResponse) {
 
         // Wait for page to load
         sendProgressUpdate(`Loading page...`);
-        await new Promise((resolve) => setTimeout(resolve, 30000));
+        await new Promise((resolve) => setTimeout(resolve, waitTime * 1000));
 
         // Extract data from the page
         sendProgressUpdate(`Extracting table data...`);
         const response = await chrome.tabs.sendMessage(tab.id, {
           action: "extractTableData",
+          amountsPerPage: amountsPerPage,
+          useDateFilter: useDateFilter,
+          startDate: startDate,
+          endDate: endDate,
         });
 
         if (response && response.success && response.data) {
@@ -101,6 +158,9 @@ async function extractTablesFromUrls(urls, sendResponse) {
         errors.push(`Error saving file: ${error.message}`);
       }
 
+      // Clear extraction state
+      await chrome.storage.local.remove("extractionState");
+
       sendResponse({
         success: true,
         message: `Extraction completed! Extracted ${combinedData.totalRows} rows from ${allExtractedData.length} pages.`,
@@ -112,6 +172,9 @@ async function extractTablesFromUrls(urls, sendResponse) {
         },
       });
     } else {
+      // Clear extraction state
+      await chrome.storage.local.remove("extractionState");
+
       sendResponse({
         success: false,
         error: "No data was extracted from any URL",
@@ -120,6 +183,10 @@ async function extractTablesFromUrls(urls, sendResponse) {
     }
   } catch (error) {
     console.error("Fatal error:", error);
+
+    // Clear extraction state
+    await chrome.storage.local.remove("extractionState");
+
     sendResponse({
       success: false,
       error: error.message,
@@ -135,6 +202,21 @@ function sendProgressUpdate(status = null) {
     extractedRows: totalExtractedRows,
     status: status || `Processing page ${currentUrlIndex} of ${totalUrls}`,
   };
+
+  // Calculate percentage
+  const percentage =
+    totalUrls > 0 ? Math.round((currentUrlIndex / totalUrls) * 100) : 0;
+
+  // Save progress state to storage
+  const extractionState = {
+    inProgress: true,
+    status: progressData.status,
+    percentage: percentage,
+    processed: currentUrlIndex,
+    extractedRows: totalExtractedRows,
+    startTime: Date.now(),
+  };
+  chrome.storage.local.set({ extractionState: extractionState });
 
   // Send progress update to popup
   chrome.runtime

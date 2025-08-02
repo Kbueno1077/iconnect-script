@@ -10,9 +10,15 @@ document.addEventListener("DOMContentLoaded", function () {
   const urlInput = document.getElementById("urlInput");
   const addUrlBtn = document.getElementById("addUrl");
   const extractBtn = document.getElementById("extractBtn");
-  const loadDefaultsBtn = document.getElementById("loadDefaultsBtn");
+  const clearAllBtn = document.getElementById("clearAllBtn");
   const loadJsonBtn = document.getElementById("loadJsonBtn");
   const jsonFileInput = document.getElementById("jsonFileInput");
+  const waitTimeInput = document.getElementById("waitTimeInput");
+  const amountsPerPageInput = document.getElementById("amountsPerPageInput");
+  const useDateFilterCheckbox = document.getElementById("useDateFilter");
+  const dateFilterContainer = document.getElementById("dateFilterContainer");
+  const startDateInput = document.getElementById("startDateInput");
+  const endDateInput = document.getElementById("endDateInput");
   const urlList = document.getElementById("urlList");
   const status = document.getElementById("status");
   const progressContainer = document.getElementById("progressContainer");
@@ -22,13 +28,63 @@ document.addEventListener("DOMContentLoaded", function () {
   const processedCount = document.getElementById("processedCount");
   const extractedRows = document.getElementById("extractedRows");
   const errorDetails = document.getElementById("errorDetails");
+  const cancelBtn = document.getElementById("cancelBtn");
 
-  chrome.storage.local.get(["urls"], function (result) {
-    if (result.urls) {
-      urls = result.urls;
-      updateUrlList();
+  chrome.storage.local.get(
+    [
+      "urls",
+      "waitTime",
+      "amountsPerPage",
+      "useDateFilter",
+      "startDate",
+      "endDate",
+      "extractionState",
+    ],
+    function (result) {
+      if (result.urls) {
+        urls = result.urls;
+        updateUrlList();
+      }
+      if (result.waitTime) {
+        waitTimeInput.value = result.waitTime;
+      }
+      if (result.amountsPerPage) {
+        amountsPerPageInput.value = result.amountsPerPage;
+      }
+      if (result.useDateFilter !== undefined) {
+        useDateFilterCheckbox.checked = result.useDateFilter;
+        dateFilterContainer.style.display = result.useDateFilter
+          ? "block"
+          : "none";
+      }
+      if (result.startDate) {
+        startDateInput.value = result.startDate;
+      }
+      if (result.endDate) {
+        endDateInput.value = result.endDate;
+      }
+      if (result.extractionState && result.extractionState.inProgress) {
+        // Restore extraction state
+        extractionInProgress = true;
+        extractBtn.disabled = true;
+        extractBtn.textContent = "Extracting...";
+        clearAllBtn.disabled = true;
+        loadJsonBtn.disabled = true;
+        progressContainer.style.display = "block";
+
+        // Restore progress data
+        const state = result.extractionState;
+        progressStatus.textContent =
+          state.status || "Extraction in progress...";
+        progressFill.style.width = state.percentage + "%";
+        progressText.textContent = state.percentage + "%";
+        processedCount.textContent = state.processed || 0;
+        extractedRows.textContent = state.extractedRows || 0;
+
+        showStatus("Extraction in progress...", "info");
+      }
     }
-  });
+  );
 
   addUrlBtn.addEventListener("click", function () {
     const url = urlInput.value.trim();
@@ -58,22 +114,16 @@ document.addEventListener("DOMContentLoaded", function () {
     startExtraction();
   });
 
-  loadDefaultsBtn.addEventListener("click", function () {
+  clearAllBtn.addEventListener("click", function () {
     if (extractionInProgress) {
-      showStatus("Cannot load defaults during extraction!", "warning");
+      showStatus("Cannot clear URLs during extraction!", "warning");
       return;
     }
 
-    const defaultUrls = [
-      "file:///Users/kevinbueno/Documents/Work/iconnect-script/pages/Harmony.html",
-      "file:///Users/kevinbueno/Documents/Work/iconnect-script/pages/Harmony2.html",
-      "file:///Users/kevinbueno/Documents/Work/iconnect-script/pages/Harmony3.html",
-    ];
-
-    urls = [...defaultUrls];
+    urls = [];
     chrome.storage.local.set({ urls: urls });
     updateUrlList();
-    showStatus("Default URLs loaded!", "success");
+    showStatus("All URLs cleared!", "success");
   });
 
   loadJsonBtn.addEventListener("click", function () {
@@ -82,6 +132,66 @@ document.addEventListener("DOMContentLoaded", function () {
       return;
     }
     jsonFileInput.click();
+  });
+
+  // Save wait time when changed
+  waitTimeInput.addEventListener("change", function () {
+    const waitTime = parseInt(waitTimeInput.value);
+    if (waitTime >= 1 && waitTime <= 300) {
+      chrome.storage.local.set({ waitTime: waitTime });
+    }
+  });
+
+  // Save amounts per page when changed
+  amountsPerPageInput.addEventListener("change", function () {
+    const amountsPerPage = parseInt(amountsPerPageInput.value);
+    if (amountsPerPage >= 1 && amountsPerPage <= 1000) {
+      chrome.storage.local.set({ amountsPerPage: amountsPerPage });
+    }
+  });
+
+  // Handle date filter checkbox
+  useDateFilterCheckbox.addEventListener("change", function () {
+    const useDateFilter = useDateFilterCheckbox.checked;
+    dateFilterContainer.style.display = useDateFilter ? "block" : "none";
+    chrome.storage.local.set({ useDateFilter: useDateFilter });
+
+    // Set default dates if not already set
+    if (useDateFilter && !startDateInput.value) {
+      const today = new Date().toISOString().split("T")[0];
+      startDateInput.value = today;
+      endDateInput.value = today;
+      chrome.storage.local.set({
+        startDate: today,
+        endDate: today,
+      });
+    }
+  });
+
+  // Handle start date changes
+  startDateInput.addEventListener("change", function () {
+    const startDate = startDateInput.value;
+    chrome.storage.local.set({ startDate: startDate });
+
+    // Ensure end date is not before start date
+    if (endDateInput.value && endDateInput.value < startDate) {
+      endDateInput.value = startDate;
+      chrome.storage.local.set({ endDate: startDate });
+    }
+  });
+
+  // Handle end date changes
+  endDateInput.addEventListener("change", function () {
+    const endDate = endDateInput.value;
+    const startDate = startDateInput.value;
+
+    // Ensure end date is not before start date
+    if (startDate && endDate < startDate) {
+      endDateInput.value = startDate;
+      chrome.storage.local.set({ endDate: startDate });
+    } else {
+      chrome.storage.local.set({ endDate: endDate });
+    }
   });
 
   jsonFileInput.addEventListener("change", function (event) {
@@ -110,12 +220,21 @@ document.addEventListener("DOMContentLoaded", function () {
     event.target.value = "";
   });
 
+  // Cancel button event listener
+  cancelBtn.addEventListener("click", function () {
+    if (extractionInProgress) {
+      cancelExtraction();
+    }
+  });
+
   function startExtraction() {
     extractionInProgress = true;
     extractBtn.disabled = true;
-    loadDefaultsBtn.disabled = true;
+    extractBtn.textContent = "Extracting...";
+    clearAllBtn.disabled = true;
     loadJsonBtn.disabled = true;
     progressContainer.style.display = "block";
+    cancelBtn.style.display = "block";
     progressStatus.textContent = "Initializing extraction...";
     progressFill.style.width = "0%";
     progressText.textContent = "0%";
@@ -124,24 +243,51 @@ document.addEventListener("DOMContentLoaded", function () {
     errorDetails.style.display = "none";
     errorDetails.textContent = "";
 
+    // Save initial extraction state
+    const extractionState = {
+      inProgress: true,
+      status: "Initializing extraction...",
+      percentage: 0,
+      processed: 0,
+      extractedRows: 0,
+      startTime: Date.now(),
+    };
+    chrome.storage.local.set({ extractionState: extractionState });
+
     showStatus("Starting extraction...", "info");
+
+    const waitTime = parseInt(waitTimeInput.value) || 15;
+    const amountsPerPage = parseInt(amountsPerPageInput.value) || 50;
+    const useDateFilter = useDateFilterCheckbox.checked;
+    const startDate = startDateInput.value;
+    const endDate = endDateInput.value;
 
     chrome.runtime.sendMessage(
       {
         action: "extractTables",
         urls: urls,
+        waitTime: waitTime,
+        amountsPerPage: amountsPerPage,
+        useDateFilter: useDateFilter,
+        startDate: startDate,
+        endDate: endDate,
       },
       function (response) {
         extractionInProgress = false;
         extractBtn.disabled = false;
-        loadDefaultsBtn.disabled = false;
+        extractBtn.textContent = "Start Extracting";
+        clearAllBtn.disabled = false;
         loadJsonBtn.disabled = false;
+        cancelBtn.style.display = "none";
 
         if (response && response.success) {
           showStatus("Extraction completed! Check downloads.", "success");
           progressStatus.textContent = "Extraction completed!";
           progressFill.style.width = "100%";
           progressText.textContent = "100%";
+
+          // Clear extraction state
+          chrome.storage.local.remove("extractionState");
         } else {
           showStatus(
             "Extraction failed: " +
@@ -154,6 +300,9 @@ document.addEventListener("DOMContentLoaded", function () {
             errorDetails.style.display = "block";
             errorDetails.textContent = response.errorDetails;
           }
+
+          // Clear extraction state
+          chrome.storage.local.remove("extractionState");
         }
 
         setTimeout(() => {
@@ -173,6 +322,29 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   }
 
+  function cancelExtraction() {
+    // Send cancellation message to background script
+    chrome.runtime.sendMessage(
+      { action: "cancelExtraction" },
+      function (response) {
+        console.log("Cancellation sent to background script");
+      }
+    );
+
+    extractionInProgress = false;
+    extractBtn.disabled = false;
+    extractBtn.textContent = "Start Extracting";
+    clearAllBtn.disabled = false;
+    loadJsonBtn.disabled = false;
+    cancelBtn.style.display = "none";
+    progressContainer.style.display = "none";
+
+    // Clear extraction state
+    chrome.storage.local.remove("extractionState");
+
+    showStatus("Extraction cancelled by user.", "warning");
+  }
+
   function updateProgress(data) {
     if (data.current && data.total) {
       const percentage = Math.round((data.current / data.total) * 100);
@@ -184,6 +356,18 @@ document.addEventListener("DOMContentLoaded", function () {
       if (data.status) {
         progressStatus.textContent = data.status;
       }
+
+      // Save current progress state
+      const extractionState = {
+        inProgress: true,
+        status:
+          data.status || `Processing page ${data.current} of ${data.total}`,
+        percentage: percentage,
+        processed: data.current,
+        extractedRows: data.extractedRows || 0,
+        startTime: Date.now(),
+      };
+      chrome.storage.local.set({ extractionState: extractionState });
     }
   }
 
@@ -192,12 +376,10 @@ document.addEventListener("DOMContentLoaded", function () {
     urls.forEach((url, index) => {
       const item = document.createElement("div");
       item.className = "url-item";
-      item.textContent = url;
 
       const removeBtn = document.createElement("button");
+      removeBtn.className = "remove-btn";
       removeBtn.innerHTML = "&times;";
-      removeBtn.style.cssText =
-        "background: #dc3545; color: white; border: none; border-radius: 3px; padding: 2px 6px; margin-left: 10px; font-size: 12px; cursor: pointer; font-weight: bold;";
       removeBtn.onclick = function () {
         if (extractionInProgress) {
           showStatus("Cannot remove URLs during extraction!", "warning");
@@ -209,7 +391,12 @@ document.addEventListener("DOMContentLoaded", function () {
         showStatus("URL removed!", "success");
       };
 
+      const urlText = document.createElement("span");
+      urlText.className = "url-text";
+      urlText.textContent = url;
+
       item.appendChild(removeBtn);
+      item.appendChild(urlText);
       urlList.appendChild(item);
     });
   }

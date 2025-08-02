@@ -9,16 +9,72 @@ const CONFIG = {
     recordsAmount:
       "ctrlPageContainer1_ctl01_ctrlPageControlContainer_ctl00_ucSRG_lblRecords",
     fallbackTableContainer: ".plandatatableblock",
+    pageSizeInput:
+      "ctrlPageContainer1$ctl01$ctrlPageControlContainer$ctl00$ucSRG$txtPageSize",
   },
 };
 
 // Listen for messages from the background script
 chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
   if (request.action === "extractTableData") {
-    const tableData = extractTableData();
-    sendResponse({ success: true, data: tableData });
+    extractTableDataWithPageSize(request.amountsPerPage || 50)
+      .then((tableData) => {
+        sendResponse({ success: true, data: tableData });
+      })
+      .catch((error) => {
+        console.error("Error in extraction:", error);
+        sendResponse({ success: false, error: error.message });
+      });
+    return true; // Keep message channel open for async response
   }
 });
+
+async function extractTableDataWithPageSize(amountsPerPage) {
+  try {
+    // First, set the page size input field
+    await setPageSize(amountsPerPage);
+
+    // Then extract the table data
+    return extractTableData();
+  } catch (error) {
+    console.error("Error in extractTableDataWithPageSize:", error);
+    throw error;
+  }
+}
+
+async function setPageSize(amountsPerPage) {
+  try {
+    // Find the page size input field
+    const pageSizeInputs = document.getElementsByName(
+      CONFIG.selectors.pageSizeInput
+    );
+
+    if (!pageSizeInputs || pageSizeInputs.length === 0) {
+      console.warn(
+        "Page size input field not found:",
+        CONFIG.selectors.pageSizeInput
+      );
+      return;
+    }
+
+    // Get the first element from the NodeList
+    const pageSizeInput = pageSizeInputs[0];
+
+    console.log(`Setting page size to: ${amountsPerPage}`);
+
+    // Set the value
+    pageSizeInput.value = amountsPerPage;
+    pageSizeInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
+
+    // Wait a moment for the page to update
+    await new Promise((resolve) => setTimeout(resolve, 5000));
+
+    console.log("Page size input updated successfully");
+  } catch (error) {
+    console.error("Error setting page size:", error);
+    throw error;
+  }
+}
 
 function extractTableData() {
   try {
