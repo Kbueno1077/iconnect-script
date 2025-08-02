@@ -20,6 +20,9 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
     const startDate = request.startDate || "";
     const endDate = request.endDate || "";
 
+    console.log("🚀 ~ extractTablesFromUrls ~ endDate:", endDate);
+    console.log("🚀 ~ extractTablesFromUrls ~ startDate:", startDate);
+
     extractTablesFromUrls(
       request.urls,
       sendResponse,
@@ -158,15 +161,9 @@ async function extractTablesFromUrls(
               // Set the value
               pageSizeInput.value = amountsPerPage;
 
-              // Force page reload to ensure changes take effect
-              // window.location.reload();
-
               // Find and click the search button to apply the new page size
               const searchButton = document.getElementById("cmdSearch40525");
-              console.log(
-                "🚀 ~ extractTablesFromUrls ~ searchButton:",
-                searchButton
-              );
+
               if (searchButton) {
                 searchButton.click();
               } else {
@@ -185,8 +182,6 @@ async function extractTablesFromUrls(
           args: [amountsPerPage], // Pass the argument here
         });
 
-        console.log("🚀 ~ extractTablesFromUrls ~ setPageSize:", setPageSize);
-
         await new Promise((resolve) => setTimeout(resolve, 10000));
 
         const response = await chrome.tabs.sendMessage(tab.id, {
@@ -198,6 +193,29 @@ async function extractTablesFromUrls(
         });
 
         if (response && response.success && response.data) {
+          if (useDateFilter) {
+            const filteredDateRows = response.data.rows.filter((row) => {
+              const [month, day, year] = row.Date.split("/");
+              const rowDate = new Date(year, month - 1, day);
+              const filterStartDate = new Date(startDate);
+              const filterEndDate = new Date(endDate);
+
+              // Reset times to midnight
+              rowDate.setHours(0, 0, 0, 0);
+
+              // Add one day to start date to fix off-by-one issue
+              filterStartDate.setDate(filterStartDate.getDate() + 1);
+              filterStartDate.setHours(0, 0, 0, 0);
+
+              filterEndDate.setDate(filterEndDate.getDate() + 1);
+              filterEndDate.setHours(0, 0, 0, 0);
+
+              return rowDate >= filterStartDate && rowDate <= filterEndDate;
+            });
+
+            response.data.rows = filteredDateRows;
+          }
+
           allExtractedData.push(response.data);
           totalExtractedRows += response.data.rows.length;
           console.log(
@@ -218,7 +236,7 @@ async function extractTablesFromUrls(
         // Wait between pages
         if (i < urls.length - 1) {
           sendProgressUpdate(`Waiting before next page...`);
-          await new Promise((resolve) => setTimeout(resolve, 500));
+          await new Promise((resolve) => setTimeout(resolve, 1000));
         }
       } catch (error) {
         console.error(`❌ Error processing ${url}:`, error);
@@ -233,6 +251,7 @@ async function extractTablesFromUrls(
     if (allExtractedData.length > 0) {
       sendProgressUpdate(`Saving results...`);
       const combinedData = combineAllData();
+      console.log("🚀 ~ extractTablesFromUrls ~ combinedData:", combinedData);
 
       try {
         await saveToFile(combinedData);
@@ -364,7 +383,6 @@ function combineAllData() {
   });
 
   combined.totalRows = combined.rows.length;
-  console.log("🚀 ~ combineAllData ~ combined:", combined);
   return combined;
 }
 
