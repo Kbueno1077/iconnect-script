@@ -68,19 +68,46 @@ async function setPageSize(amountsPerPage) {
     // Find and click the search button to apply the new page size
     const searchButton = document.getElementById("cmdSearch40525");
     if (searchButton) {
+      console.log("Clicking search button to apply page size...");
       searchButton.click();
+
+      // Wait for the page to refresh and reload
+      console.log("Waiting for page refresh...");
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+
+      // Wait for the page to be fully loaded
+      await waitForPageLoad();
     } else {
       console.warn("Search button not found");
     }
-
-    // Wait a moment for the page to update
-    await new Promise((resolve) => setTimeout(resolve, 10000));
 
     console.log("Page size input updated successfully");
   } catch (error) {
     console.error("Error setting page size:", error);
     throw error;
   }
+}
+
+async function waitForPageLoad() {
+  return new Promise((resolve) => {
+    // Check if page is already loaded
+    if (document.readyState === "complete") {
+      resolve();
+      return;
+    }
+
+    // Wait for page to load
+    window.addEventListener("load", () => {
+      console.log("Page load event fired");
+      setTimeout(resolve, 2000); // Extra wait for dynamic content
+    });
+
+    // Fallback timeout
+    setTimeout(() => {
+      console.log("Page load timeout, proceeding anyway");
+      resolve();
+    }, 15000);
+  });
 }
 
 function extractTableData() {

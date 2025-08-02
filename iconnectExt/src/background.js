@@ -106,7 +106,9 @@ async function extractTablesFromUrls(
 
         // Extract data from the page
         sendProgressUpdate(`Extracting table data...`);
-        const response = await chrome.tabs.sendMessage(tab.id, {
+
+        // Wait for page to be ready and handle potential refreshes
+        const response = await extractDataWithRetry(tab.id, {
           action: "extractTableData",
           amountsPerPage: amountsPerPage,
           useDateFilter: useDateFilter,
@@ -193,6 +195,55 @@ async function extractTablesFromUrls(
       error: error.message,
       errorDetails: errors.join("\n") + "\n\nFatal error: " + error.message,
     });
+  }
+}
+
+async function extractDataWithRetry(tabId, message, maxRetries = 3) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`Attempt ${attempt} to extract data from tab ${tabId}`);
+
+      // Wait a bit before attempting to send message
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+
+      // Try to send message to content script
+      const response = await chrome.tabs.sendMessage(tabId, message);
+
+      if (response && response.success) {
+        console.log(`✅ Successfully extracted data on attempt ${attempt}`);
+        return response;
+      } else {
+        console.log(`⚠️ No response or unsuccessful on attempt ${attempt}`);
+        return response;
+      }
+    } catch (error) {
+      console.log(`❌ Error on attempt ${attempt}:`, error.message);
+
+      if (attempt < maxRetries) {
+        console.log(`🔄 Retrying in 5 seconds...`);
+        await new Promise((resolve) => setTimeout(resolve, 5000));
+
+        // Check if tab still exists
+        try {
+          await chrome.tabs.get(tabId);
+
+          // If the error is about content script not being available,
+          // the page might have refreshed, so we wait longer
+          if (error.message.includes("Could not establish connection")) {
+            console.log(
+              `📄 Page likely refreshed, waiting for content script to reload...`
+            );
+            await new Promise((resolve) => setTimeout(resolve, 8000));
+          }
+        } catch (tabError) {
+          console.log(`❌ Tab ${tabId} no longer exists`);
+          throw new Error(`Tab was closed during extraction`);
+        }
+      } else {
+        console.log(`❌ Failed after ${maxRetries} attempts`);
+        throw error;
+      }
+    }
   }
 }
 
