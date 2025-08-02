@@ -66,18 +66,18 @@ async function setPageSize(amountsPerPage) {
     pageSizeInput.value = amountsPerPage;
 
     // Force page reload to ensure changes take effect
-    // window.location.reload();
+    window.location.reload();
 
     // Find and click the search button to apply the new page size
-    const searchButton = document.getElementById("cmdSearch40525");
-    if (searchButton) {
-      searchButton.click();
-    } else {
-      console.warn("Search button not found");
-    }
+    // const searchButton = document.getElementById("cmdSearch40525");
+    // if (searchButton) {
+    //   searchButton.click();
+    // } else {
+    //   console.warn("Search button not found");
+    // }
 
     // Wait a moment for the page to update
-    // await new Promise((resolve) => setTimeout(resolve, 10000));
+    await new Promise((resolve) => setTimeout(resolve, 2000));
 
     console.log("Page size input updated successfully");
   } catch (error) {
