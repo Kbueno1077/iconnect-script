@@ -64,10 +64,17 @@ async function setPageSize(amountsPerPage) {
 
     // Set the value
     pageSizeInput.value = amountsPerPage;
-    pageSizeInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
+
+    // Find and click the search button to apply the new page size
+    const searchButton = document.getElementById("cmdSearch40525");
+    if (searchButton) {
+      searchButton.click();
+    } else {
+      console.warn("Search button not found");
+    }
 
     // Wait a moment for the page to update
-    await new Promise((resolve) => setTimeout(resolve, 5000));
+    await new Promise((resolve) => setTimeout(resolve, 10000));
 
     console.log("Page size input updated successfully");
   } catch (error) {

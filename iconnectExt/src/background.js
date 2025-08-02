@@ -19,6 +19,7 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
     const useDateFilter = request.useDateFilter || false;
     const startDate = request.startDate || "";
     const endDate = request.endDate || "";
+
     extractTablesFromUrls(
       request.urls,
       sendResponse,
