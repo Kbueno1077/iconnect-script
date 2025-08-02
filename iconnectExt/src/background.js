@@ -187,6 +187,8 @@ async function extractTablesFromUrls(
 
         console.log("🚀 ~ extractTablesFromUrls ~ setPageSize:", setPageSize);
 
+        await new Promise((resolve) => setTimeout(resolve, 10000));
+
         const response = await chrome.tabs.sendMessage(tab.id, {
           action: "extractTableData",
           amountsPerPage: amountsPerPage,
