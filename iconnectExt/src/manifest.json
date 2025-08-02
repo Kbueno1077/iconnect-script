@@ -3,7 +3,7 @@
   "name": "Table Data Extractor",
   "version": "1.0.0",
   "description": "Extract table data from web pages using your existing Chrome browser",
-  "permissions": ["activeTab", "storage", "downloads"],
+  "permissions": ["activeTab", "storage", "downloads", "scripting"],
   "host_permissions": ["file://*"],
   "action": {
     "default_popup": "popup.html",
