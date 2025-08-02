@@ -1,5 +1,3 @@
-// Background script for Table Data Extractor extension
-
 let allExtractedData = [];
 let startTime = new Date();
 let currentUrlIndex = 0;
@@ -11,7 +9,6 @@ let extractionCancelled = false;
 // Listen for messages from popup
 chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
   if (request.action === "extractTables") {
-    // Reset cancellation flag
     extractionCancelled = false;
 
     const waitTime = request.waitTime || 15;
@@ -19,9 +16,6 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
     const useDateFilter = request.useDateFilter || false;
     const startDate = request.startDate || "";
     const endDate = request.endDate || "";
-
-    console.log("🚀 ~ extractTablesFromUrls ~ endDate:", endDate);
-    console.log("🚀 ~ extractTablesFromUrls ~ startDate:", startDate);
 
     extractTablesFromUrls(
       request.urls,
@@ -32,7 +26,7 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
       startDate,
       endDate
     );
-    return true; // Keep message channel open for async response
+    return true;
   } else if (request.action === "cancelExtraction") {
     extractionCancelled = true;
     sendResponse({ success: true, message: "Extraction cancelled" });
@@ -127,38 +121,21 @@ async function extractTablesFromUrls(
           func: async (amountsPerPage) => {
             // Pass amountsPerPage as argument
             try {
-              const CONFIG = {
-                selectors: {
-                  mainTable:
-                    "ctrlPageContainer1_ctl01_ctrlPageControlContainer_ctl00_ucSRG_adagrid",
-                  consumerName: "ctrlPageContainer1_ctl01_lblConsumer",
-                  recordsAmount:
-                    "ctrlPageContainer1_ctl01_ctrlPageControlContainer_ctl00_ucSRG_lblRecords",
-                  fallbackTableContainer: ".plandatatableblock",
-                  pageSizeInput:
-                    "ctrlPageContainer1$ctl01$ctrlPageControlContainer$ctl00$ucSRG$txtPageSize",
-                },
-              };
-
               // Find the page size input field
               const pageSizeInputs = document.getElementsByName(
-                CONFIG.selectors.pageSizeInput
+                "ctrlPageContainer1$ctl01$ctrlPageControlContainer$ctl00$ucSRG$txtPageSize"
               );
 
               if (!pageSizeInputs || pageSizeInputs.length === 0) {
                 console.warn(
                   "Page size input field not found:",
-                  CONFIG.selectors.pageSizeInput
+                  "ctrlPageContainer1$ctl01$ctrlPageControlContainer$ctl00$ucSRG$txtPageSize"
                 );
                 return;
               }
-
-              // Get the first element from the NodeList
               const pageSizeInput = pageSizeInputs[0];
 
-              console.log(`Setting page size to: ${amountsPerPage}`);
-
-              // Set the value
+              // Set the value of the page size input field
               pageSizeInput.value = amountsPerPage;
 
               // Find and click the search button to apply the new page size
@@ -171,7 +148,7 @@ async function extractTablesFromUrls(
               }
 
               // Wait a moment for the page to update
-              await new Promise((resolve) => setTimeout(resolve, 10000));
+              await new Promise((resolve) => setTimeout(resolve, 5000));
 
               console.log("Page size input updated successfully");
             } catch (error) {
@@ -251,7 +228,6 @@ async function extractTablesFromUrls(
     if (allExtractedData.length > 0) {
       sendProgressUpdate(`Saving results...`);
       const combinedData = combineAllData();
-      console.log("🚀 ~ extractTablesFromUrls ~ combinedData:", combinedData);
 
       try {
         await saveToFile(combinedData);
