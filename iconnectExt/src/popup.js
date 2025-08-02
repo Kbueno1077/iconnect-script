@@ -1,16 +1,28 @@
 let urls = [
-  "file:///Users/kevinbueno/Documents/Work/iconnect-script/pages/Harmony.html",
-  "file:///Users/kevinbueno/Documents/Work/iconnect-script/pages/Harmony2.html",
-  "file:///Users/kevinbueno/Documents/Work/iconnect-script/pages/Harmony3.html",
+  {
+    name: "Greenland Devon",
+    url: "file:///Users/kevinbueno/Documents/Work/iconnect-script/pages/Harmony.html",
+    selected: true,
+  },
+  {
+    name: "Slater Dave",
+    url: "file:///Users/kevinbueno/Documents/Work/iconnect-script/pages/Harmony2.html",
+    selected: true,
+  },
+  {
+    name: "Osoria Keilan",
+    url: "file:///Users/kevinbueno/Documents/Work/iconnect-script/pages/Harmony3.html",
+    selected: true,
+  },
 ];
 
 let extractionInProgress = false;
 
 document.addEventListener("DOMContentLoaded", function () {
+  const nameInput = document.getElementById("nameInput");
   const urlInput = document.getElementById("urlInput");
   const addUrlBtn = document.getElementById("addUrl");
   const extractBtn = document.getElementById("extractBtn");
-  const clearAllBtn = document.getElementById("clearAllBtn");
   const loadJsonBtn = document.getElementById("loadJsonBtn");
   const jsonFileInput = document.getElementById("jsonFileInput");
   const waitTimeInput = document.getElementById("waitTimeInput");
@@ -29,6 +41,7 @@ document.addEventListener("DOMContentLoaded", function () {
   const extractedRows = document.getElementById("extractedRows");
   const errorDetails = document.getElementById("errorDetails");
   const cancelBtn = document.getElementById("cancelBtn");
+  const toggleAllBtn = document.getElementById("toggleAllBtn");
 
   chrome.storage.local.get(
     [
@@ -68,7 +81,6 @@ document.addEventListener("DOMContentLoaded", function () {
         extractionInProgress = true;
         extractBtn.disabled = true;
         extractBtn.textContent = "Extracting...";
-        clearAllBtn.disabled = true;
         loadJsonBtn.disabled = true;
         progressContainer.style.display = "block";
 
@@ -87,16 +99,40 @@ document.addEventListener("DOMContentLoaded", function () {
   );
 
   addUrlBtn.addEventListener("click", function () {
+    const name = nameInput.value.trim();
     const url = urlInput.value.trim();
-    if (url && !urls.includes(url)) {
-      urls.push(url);
-      chrome.storage.local.set({ urls: urls });
-      updateUrlList();
-      urlInput.value = "";
-      showStatus("URL added successfully!", "success");
-    } else if (urls.includes(url)) {
-      showStatus("URL already exists!", "warning");
+
+    if (!name) {
+      showStatus("Please enter a name!", "error");
+      return;
     }
+
+    if (!url) {
+      showStatus("Please enter a URL!", "error");
+      return;
+    }
+
+    // Check if URL already exists
+    const urlExists = urls.some((entry) => entry.url === url);
+    if (urlExists) {
+      showStatus("URL already exists!", "warning");
+      return;
+    }
+
+    // Check if name already exists
+    const nameExists = urls.some((entry) => entry.name === name);
+    if (nameExists) {
+      showStatus("Name already exists!", "warning");
+      return;
+    }
+
+    urls.push({ name, url, selected: true });
+    chrome.storage.local.set({ urls: urls });
+    updateUrlList();
+    updateEntryCount();
+    nameInput.value = "";
+    urlInput.value = "";
+    showStatus("Entry added successfully!", "success");
   });
 
   // Extract button
@@ -106,24 +142,13 @@ document.addEventListener("DOMContentLoaded", function () {
       return;
     }
 
-    if (urls.length === 0) {
-      showStatus("No URLs to process!", "error");
+    const selectedUrls = urls.filter((entry) => entry.selected);
+    if (selectedUrls.length === 0) {
+      showStatus("No entries selected for processing!", "error");
       return;
     }
 
-    startExtraction();
-  });
-
-  clearAllBtn.addEventListener("click", function () {
-    if (extractionInProgress) {
-      showStatus("Cannot clear URLs during extraction!", "warning");
-      return;
-    }
-
-    urls = [];
-    chrome.storage.local.set({ urls: urls });
-    updateUrlList();
-    showStatus("All URLs cleared!", "success");
+    startExtraction(selectedUrls);
   });
 
   loadJsonBtn.addEventListener("click", function () {
@@ -204,12 +229,38 @@ document.addEventListener("DOMContentLoaded", function () {
         const jsonData = JSON.parse(e.target.result);
 
         if (jsonData.urls && Array.isArray(jsonData.urls)) {
-          urls = [...jsonData.urls];
+          // Validate that each entry has both name and url
+          const validEntries = jsonData.urls.filter(
+            (entry) =>
+              entry &&
+              typeof entry === "object" &&
+              entry.name &&
+              entry.url &&
+              typeof entry.name === "string" &&
+              typeof entry.url === "string"
+          );
+
+          if (validEntries.length !== jsonData.urls.length) {
+            showStatus(
+              "Some entries in JSON file are invalid (missing name or URL)!",
+              "warning"
+            );
+          }
+
+          // Add selected property to each entry
+          urls = validEntries.map((entry) => ({ ...entry, selected: true }));
           chrome.storage.local.set({ urls: urls });
           updateUrlList();
-          showStatus(`Loaded ${urls.length} URLs from JSON file!`, "success");
+          updateEntryCount();
+          showStatus(
+            `Loaded ${urls.length} entries from JSON file!`,
+            "success"
+          );
         } else {
-          showStatus("JSON file must contain a 'urls' array!", "error");
+          showStatus(
+            "JSON file must contain a 'urls' array with objects containing 'name' and 'url' fields!",
+            "error"
+          );
         }
       } catch (error) {
         showStatus("Invalid JSON file: " + error.message, "error");
@@ -227,11 +278,20 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   });
 
-  function startExtraction() {
+  // Toggle all button event listener
+  toggleAllBtn.addEventListener("click", function () {
+    if (extractionInProgress) {
+      showStatus("Cannot modify selections during extraction!", "warning");
+      return;
+    }
+
+    toggleAllEntries();
+  });
+
+  function startExtraction(selectedUrls) {
     extractionInProgress = true;
     extractBtn.disabled = true;
     extractBtn.textContent = "Extracting...";
-    clearAllBtn.disabled = true;
     loadJsonBtn.disabled = true;
     progressContainer.style.display = "block";
     cancelBtn.style.display = "block";
@@ -262,10 +322,14 @@ document.addEventListener("DOMContentLoaded", function () {
     const startDate = startDateInput.value;
     const endDate = endDateInput.value;
 
+    // Extract just the URLs for the background script
+    const urlList = selectedUrls.map((entry) => entry.url);
+
     chrome.runtime.sendMessage(
       {
         action: "extractTables",
-        urls: urls,
+        urls: urlList,
+        entries: selectedUrls, // Pass the full entry objects with names
         waitTime: waitTime,
         amountsPerPage: amountsPerPage,
         useDateFilter: useDateFilter,
@@ -276,7 +340,6 @@ document.addEventListener("DOMContentLoaded", function () {
         extractionInProgress = false;
         extractBtn.disabled = false;
         extractBtn.textContent = "Start Extracting";
-        clearAllBtn.disabled = false;
         loadJsonBtn.disabled = false;
         cancelBtn.style.display = "none";
 
@@ -334,7 +397,6 @@ document.addEventListener("DOMContentLoaded", function () {
     extractionInProgress = false;
     extractBtn.disabled = false;
     extractBtn.textContent = "Start Extracting";
-    clearAllBtn.disabled = false;
     loadJsonBtn.disabled = false;
     cancelBtn.style.display = "none";
     progressContainer.style.display = "none";
@@ -373,32 +435,87 @@ document.addEventListener("DOMContentLoaded", function () {
 
   function updateUrlList() {
     urlList.innerHTML = "";
-    urls.forEach((url, index) => {
+    urls.forEach((entry, index) => {
       const item = document.createElement("div");
       item.className = "url-item";
 
-      const removeBtn = document.createElement("button");
-      removeBtn.className = "remove-btn";
-      removeBtn.innerHTML = "&times;";
-      removeBtn.onclick = function () {
-        if (extractionInProgress) {
-          showStatus("Cannot remove URLs during extraction!", "warning");
-          return;
-        }
-        urls.splice(index, 1);
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.className = "checkbox-item";
+      checkbox.checked = entry.selected !== false; // Default to true if not specified
+      checkbox.onchange = function () {
+        entry.selected = checkbox.checked;
         chrome.storage.local.set({ urls: urls });
-        updateUrlList();
-        showStatus("URL removed!", "success");
+        updateEntryCount();
+        updateToggleButtonState();
       };
+
+      const rowNumber = document.createElement("span");
+      rowNumber.className = "row-number";
+      rowNumber.textContent = (index + 1).toString();
 
       const urlText = document.createElement("span");
       urlText.className = "url-text";
-      urlText.textContent = url;
+      urlText.textContent = entry.name;
 
-      item.appendChild(removeBtn);
+      item.appendChild(checkbox);
+      item.appendChild(rowNumber);
       item.appendChild(urlText);
       urlList.appendChild(item);
     });
+    updateEntryCount();
+    updateToggleButtonState();
+  }
+
+  function updateEntryCount() {
+    const entryCountElement = document.getElementById("entryCount");
+    if (entryCountElement) {
+      const selectedCount = urls.filter(
+        (entry) => entry.selected !== false
+      ).length;
+      entryCountElement.textContent = selectedCount;
+    }
+  }
+
+  function updateToggleButtonState() {
+    if (!toggleAllBtn) return;
+
+    const selectedCount = urls.filter(
+      (entry) => entry.selected !== false
+    ).length;
+    const totalCount = urls.length;
+
+    if (selectedCount === 0) {
+      toggleAllBtn.textContent = "Select All";
+      toggleAllBtn.style.background = "#64748b";
+    } else if (selectedCount === totalCount) {
+      toggleAllBtn.textContent = "Deselect All";
+      toggleAllBtn.style.background = "#dc3545";
+    } else {
+      toggleAllBtn.textContent = "Select All";
+      toggleAllBtn.style.background = "#64748b";
+    }
+  }
+
+  function toggleAllEntries() {
+    const selectedCount = urls.filter(
+      (entry) => entry.selected !== false
+    ).length;
+    const totalCount = urls.length;
+
+    // If all are selected, deselect all. Otherwise, select all.
+    const newState = selectedCount < totalCount;
+
+    urls.forEach((entry) => {
+      entry.selected = newState;
+    });
+
+    chrome.storage.local.set({ urls: urls });
+    updateUrlList();
+    showStatus(
+      newState ? "All entries selected!" : "All entries deselected!",
+      "success"
+    );
   }
 
   function showStatus(message, type) {

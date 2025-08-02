@@ -16,6 +16,7 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
     const useDateFilter = request.useDateFilter || false;
     const startDate = request.startDate || "";
     const endDate = request.endDate || "";
+    const entries = request.entries || []; // Get entries from request
 
     extractTablesFromUrls(
       request.urls,
@@ -24,7 +25,8 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
       amountsPerPage,
       useDateFilter,
       startDate,
-      endDate
+      endDate,
+      entries // Pass entries to the function
     );
     return true;
   } else if (request.action === "cancelExtraction") {
@@ -53,7 +55,8 @@ async function extractTablesFromUrls(
   amountsPerPage = 50,
   useDateFilter = false,
   startDate = "",
-  endDate = ""
+  endDate = "",
+  entries = [] // Add entries parameter to get names
 ) {
   try {
     // Reset state
@@ -95,13 +98,17 @@ async function extractTablesFromUrls(
       }
 
       const url = urls[i];
+      const entry = entries[i]; // Get the corresponding entry
+      const entryName = entry ? entry.name : url.split("/").pop(); // Use name if available, fallback to filename
       currentUrlIndex = i + 1;
 
-      console.log(`Processing URL ${i + 1}/${urls.length}: ${url}`);
+      console.log(
+        `Processing URL ${i + 1}/${urls.length}: ${url} (${entryName})`
+      );
 
       try {
         // Update progress - opening tab
-        sendProgressUpdate(`Opening ${url.split("/").pop()}...`);
+        sendProgressUpdate(`Opening ${entryName}...`);
 
         // Create a new tab for each URL
         const tab = await chrome.tabs.create({
@@ -202,9 +209,9 @@ async function extractTablesFromUrls(
             `Extracted ${response.data.rows.length} rows from ${response.data.consumerName}`
           );
         } else {
-          console.log(`⚠️ No data extracted from ${url}`);
-          errors.push(`No data found in ${url.split("/").pop()}`);
-          sendProgressUpdate(`No data found in ${url.split("/").pop()}`);
+          console.log(`⚠️ No data extracted from ${entryName}`);
+          errors.push(`No data found in ${entryName}`);
+          sendProgressUpdate(`No data found in ${entryName}`);
         }
 
         // Close the tab
@@ -216,11 +223,9 @@ async function extractTablesFromUrls(
           await new Promise((resolve) => setTimeout(resolve, 1000));
         }
       } catch (error) {
-        console.error(`❌ Error processing ${url}:`, error);
-        errors.push(
-          `Error processing ${url.split("/").pop()}: ${error.message}`
-        );
-        sendProgressUpdate(`Error processing ${url.split("/").pop()}`);
+        console.error(`❌ Error processing ${entryName}:`, error);
+        errors.push(`Error processing ${entryName}: ${error.message}`);
+        sendProgressUpdate(`Error processing ${entryName}`);
       }
     }
 
@@ -313,7 +318,6 @@ function combineAllData() {
     extractionInfo: {
       extractionDate: new Date().toISOString(),
       extractionDuration: new Date() - startTime,
-      extractorVersion: "3.0.0 (Chrome Extension)",
       totalSitesProcessed: totalUrls,
       successfulExtractions: allExtractedData.length,
       errors: errors,
@@ -359,6 +363,7 @@ function combineAllData() {
   });
 
   combined.totalRows = combined.rows.length;
+  console.log("🚀 ~ Data To Download ~ combined:", combined);
   return combined;
 }
 
