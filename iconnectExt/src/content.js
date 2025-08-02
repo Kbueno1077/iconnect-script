@@ -77,7 +77,7 @@ async function setPageSize(amountsPerPage) {
     }
 
     // Wait a moment for the page to update
-    await new Promise((resolve) => setTimeout(resolve, 10000));
+    // await new Promise((resolve) => setTimeout(resolve, 10000));
 
     console.log("Page size input updated successfully");
   } catch (error) {
