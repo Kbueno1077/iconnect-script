@@ -119,9 +119,10 @@ async function extractTablesFromUrls(
         // Extract data from the page
         sendProgressUpdate(`Extracting table data...`);
 
-        await chrome.scripting.executeScript({
+        const setPageSize = await chrome.scripting.executeScript({
           target: { tabId: tab.id },
-          func: async () => {
+          func: async (amountsPerPage) => {
+            // Pass amountsPerPage as argument
             try {
               const CONFIG = {
                 selectors: {
@@ -162,6 +163,10 @@ async function extractTablesFromUrls(
 
               // Find and click the search button to apply the new page size
               const searchButton = document.getElementById("cmdSearch40525");
+              console.log(
+                "🚀 ~ extractTablesFromUrls ~ searchButton:",
+                searchButton
+              );
               if (searchButton) {
                 searchButton.click();
               } else {
@@ -177,7 +182,10 @@ async function extractTablesFromUrls(
               throw error;
             }
           },
+          args: [amountsPerPage], // Pass the argument here
         });
+
+        console.log("🚀 ~ extractTablesFromUrls ~ setPageSize:", setPageSize);
 
         const response = await chrome.tabs.sendMessage(tab.id, {
           action: "extractTableData",
