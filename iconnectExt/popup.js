@@ -17,6 +17,290 @@ let urls = [
 ];
 
 let extractionInProgress = false;
+let domReady = false; // Track if DOM is ready
+
+// Global functions that need to be accessible from message listeners
+function updateProgress(data) {
+  if (!domReady) return; // Don't update if DOM isn't ready yet
+
+  const progressFill = document.getElementById("progressFill");
+  const progressText = document.getElementById("progressText");
+  const processedCount = document.getElementById("processedCount");
+  const extractedRows = document.getElementById("extractedRows");
+  const progressStatus = document.getElementById("progressStatus");
+
+  if (
+    data.current &&
+    data.total &&
+    progressFill &&
+    progressText &&
+    processedCount &&
+    extractedRows
+  ) {
+    const percentage = Math.round((data.current / data.total) * 100);
+    progressFill.style.width = percentage + "%";
+    progressText.textContent = percentage + "%";
+    processedCount.textContent = data.current;
+    extractedRows.textContent = data.extractedRows || 0;
+
+    if (data.status && progressStatus) {
+      progressStatus.textContent = data.status;
+    }
+
+    // Save current progress state
+    const extractionState = {
+      inProgress: true,
+      status: data.status || `Processing page ${data.current} of ${data.total}`,
+      percentage: percentage,
+      processed: data.current,
+      extractedRows: data.extractedRows || 0,
+      startTime: Date.now(),
+    };
+    chrome.storage.local.set({ extractionState: extractionState });
+  }
+}
+
+function displayErrorSummary(errorSummary) {
+  if (!domReady) return; // Don't display if DOM isn't ready yet
+
+  const errorDetails = document.getElementById("errorDetails");
+  if (!errorDetails) return;
+
+  errorDetails.style.display = "block";
+
+  let errorHtml = '<div class="error-summary">';
+  errorHtml += `<h4>Error Summary (${errorSummary.totalErrors} total errors)</h4>`;
+
+  if (errorSummary.failedUrls > 0) {
+    errorHtml += `<p><strong>Failed URLs:</strong> ${errorSummary.failedUrls}</p>`;
+  }
+
+  if (errorSummary.failedCustomerNames > 0) {
+    errorHtml += `<p><strong>Failed Customer Names:</strong> ${errorSummary.failedCustomerNames}</p>`;
+  }
+
+  errorHtml += '<div class="error-details">';
+
+  errorSummary.errorDetails.forEach((errorGroup) => {
+    errorHtml += `<div class="error-group">`;
+    errorHtml += `<h5>${errorGroup.type} (${errorGroup.count})</h5>`;
+    errorHtml += "<ul>";
+
+    errorGroup.items.forEach((item) => {
+      errorHtml += "<li>";
+      errorHtml += `<strong>Customer:</strong> ${
+        item.customerName || "Unknown"
+      }<br>`;
+      errorHtml += `<strong>URL:</strong> ${item.url}<br>`;
+      errorHtml += `<strong>Error:</strong> ${item.error}`;
+
+      if (item.details) {
+        errorHtml += `<br><strong>Details:</strong> <code>${item.details}</code>`;
+      }
+
+      errorHtml += "</li>";
+    });
+
+    errorHtml += "</ul>";
+    errorHtml += "</div>";
+  });
+
+  errorHtml += "</div>";
+  errorHtml +=
+    '<button id="clearErrorsBtn" style="margin-top: 10px; background: #dc3545; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">Clear Errors</button>';
+  errorHtml += "</div>";
+
+  errorDetails.innerHTML = errorHtml;
+
+  // Add event listener for clear errors button
+  const clearErrorsBtn = document.getElementById("clearErrorsBtn");
+  if (clearErrorsBtn) {
+    clearErrorsBtn.addEventListener("click", function () {
+      errorDetails.style.display = "none";
+      errorDetails.innerHTML = "";
+
+      // Also hide progress container if it's still visible
+      const progressContainer = document.getElementById("progressContainer");
+      if (progressContainer) {
+        progressContainer.style.display = "none";
+      }
+    });
+  }
+}
+
+// Function to check and restore extraction state
+function checkAndRestoreExtractionState() {
+  if (!domReady) return; // Don't check if DOM isn't ready yet
+
+  chrome.storage.local.get(
+    ["extractionState", "extractionResult"],
+    function (storageResult) {
+      // Check for completed extraction result first
+      if (storageResult.extractionResult) {
+        const extractBtn = document.getElementById("extractBtn");
+        const loadJsonBtn = document.getElementById("loadJsonBtn");
+        const progressContainer = document.getElementById("progressContainer");
+        const cancelBtn = document.getElementById("cancelBtn");
+        const progressStatus = document.getElementById("progressStatus");
+        const progressFill = document.getElementById("progressFill");
+        const progressText = document.getElementById("progressText");
+        const processedCount = document.getElementById("processedCount");
+        const extractedRows = document.getElementById("extractedRows");
+        const status = document.getElementById("status");
+
+        if (
+          extractBtn &&
+          loadJsonBtn &&
+          progressContainer &&
+          cancelBtn &&
+          progressStatus &&
+          progressFill &&
+          progressText &&
+          processedCount &&
+          extractedRows
+        ) {
+          const extractionResult = storageResult.extractionResult;
+
+          // Reset UI to completed state
+          extractionInProgress = false;
+          extractBtn.disabled = false;
+          extractBtn.textContent = "Start Extracting";
+          loadJsonBtn.disabled = false;
+          cancelBtn.style.display = "none";
+
+          if (extractionResult.success) {
+            progressStatus.textContent = "Extraction completed!";
+            progressFill.style.width = "100%";
+            progressText.textContent = "100%";
+
+            if (status) {
+              status.textContent = "Extraction completed! Check downloads.";
+              status.className = "status success";
+            }
+
+            // Show error summary if there were any errors
+            if (
+              extractionResult.errorSummary &&
+              extractionResult.errorSummary.totalErrors > 0
+            ) {
+              displayErrorSummary(extractionResult.errorSummary);
+            }
+          } else {
+            progressStatus.textContent = "Extraction failed!";
+
+            if (status) {
+              status.textContent =
+                "Extraction failed: " +
+                (extractionResult.error || "Unknown error");
+              status.className = "status error";
+            }
+
+            // Display detailed error information
+            if (extractionResult.errorSummary) {
+              displayErrorSummary(extractionResult.errorSummary);
+            } else if (extractionResult.errorDetails) {
+              const errorDetails = document.getElementById("errorDetails");
+              if (errorDetails) {
+                errorDetails.style.display = "block";
+                errorDetails.textContent = extractionResult.errorDetails;
+              }
+            }
+          }
+
+          // Clear the result after showing it
+          chrome.storage.local.remove("extractionResult");
+
+          // Hide progress after 5 seconds
+          setTimeout(() => {
+            if (progressContainer) {
+              progressContainer.style.display = "none";
+            }
+          }, 5000);
+        }
+
+        return;
+      }
+
+      // Check for active extraction
+      if (
+        storageResult.extractionState &&
+        storageResult.extractionState.inProgress
+      ) {
+        const extractBtn = document.getElementById("extractBtn");
+        const loadJsonBtn = document.getElementById("loadJsonBtn");
+        const progressContainer = document.getElementById("progressContainer");
+        const cancelBtn = document.getElementById("cancelBtn");
+        const progressStatus = document.getElementById("progressStatus");
+        const progressFill = document.getElementById("progressFill");
+        const progressText = document.getElementById("progressText");
+        const processedCount = document.getElementById("processedCount");
+        const extractedRows = document.getElementById("extractedRows");
+
+        if (
+          extractBtn &&
+          loadJsonBtn &&
+          progressContainer &&
+          cancelBtn &&
+          progressStatus &&
+          progressFill &&
+          progressText &&
+          processedCount &&
+          extractedRows
+        ) {
+          // Restore extraction state
+          extractionInProgress = true;
+          extractBtn.disabled = true;
+          extractBtn.textContent = "Extracting...";
+          loadJsonBtn.disabled = true;
+          progressContainer.style.display = "block";
+          cancelBtn.style.display = "block";
+
+          // Restore progress data
+          const state = storageResult.extractionState;
+          progressStatus.textContent =
+            state.status || "Extraction in progress...";
+          progressFill.style.width = state.percentage + "%";
+          progressText.textContent = state.percentage + "%";
+          processedCount.textContent = state.processed || 0;
+          extractedRows.textContent = state.extractedRows || 0;
+
+          // Show status if status element exists
+          const statusElement = document.getElementById("status");
+          if (statusElement) {
+            statusElement.textContent = "Extraction in progress...";
+            statusElement.className = "status info";
+          }
+        }
+      }
+    }
+  );
+}
+
+// Global message listener - moved outside of any function
+chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
+  if (request.action === "progressUpdate") {
+    updateProgress(request.data);
+  }
+});
+
+// Set up periodic state checking - but only start after DOM is ready
+let stateCheckInterval = null;
+
+// Cleanup function to clear interval when popup is unloaded
+window.addEventListener("beforeunload", function () {
+  if (stateCheckInterval) {
+    clearInterval(stateCheckInterval);
+    stateCheckInterval = null;
+  }
+});
+
+// Listen for visibility changes to restore state when popup becomes visible
+document.addEventListener("visibilitychange", function () {
+  if (!document.hidden && domReady) {
+    // Popup became visible, check for extraction state
+    setTimeout(checkAndRestoreExtractionState, 100);
+  }
+});
 
 document.addEventListener("DOMContentLoaded", function () {
   const nameInput = document.getElementById("nameInput");
@@ -43,6 +327,40 @@ document.addEventListener("DOMContentLoaded", function () {
   const cancelBtn = document.getElementById("cancelBtn");
   const toggleAllBtn = document.getElementById("toggleAllBtn");
 
+  // Mark DOM as ready
+  domReady = true;
+
+  // Function to restore extraction state - now uses global function
+  function restoreExtractionState() {
+    checkAndRestoreExtractionState();
+  }
+
+  // Start the periodic state checking now that DOM is ready
+  if (stateCheckInterval) {
+    clearInterval(stateCheckInterval);
+  }
+  stateCheckInterval = setInterval(checkAndRestoreExtractionState, 1000);
+
+  // Also check for stale extraction states and clean them up
+  chrome.storage.local.get(["extractionState"], function (result) {
+    if (result.extractionState && result.extractionState.inProgress) {
+      // Check if the extraction has been running for more than 2 hours (stale state)
+      const now = Date.now();
+      const startTime = result.extractionState.startTime || 0;
+      const runningTime = now - startTime;
+
+      if (runningTime > 2 * 60 * 60 * 1000) {
+        // 2 hours
+        console.log("Clearing stale extraction state");
+        chrome.storage.local.remove("extractionState");
+        return;
+      }
+    }
+  });
+
+  // Immediately check for extraction state when popup loads
+  setTimeout(checkAndRestoreExtractionState, 100);
+
   chrome.storage.local.get(
     [
       "urls",
@@ -51,7 +369,6 @@ document.addEventListener("DOMContentLoaded", function () {
       "useDateFilter",
       "startDate",
       "endDate",
-      "extractionState",
     ],
     function (result) {
       if (result.urls) {
@@ -76,25 +393,9 @@ document.addEventListener("DOMContentLoaded", function () {
       if (result.endDate) {
         endDateInput.value = result.endDate;
       }
-      if (result.extractionState && result.extractionState.inProgress) {
-        // Restore extraction state
-        extractionInProgress = true;
-        extractBtn.disabled = true;
-        extractBtn.textContent = "Extracting...";
-        loadJsonBtn.disabled = true;
-        progressContainer.style.display = "block";
 
-        // Restore progress data
-        const state = result.extractionState;
-        progressStatus.textContent =
-          state.status || "Extraction in progress...";
-        progressFill.style.width = state.percentage + "%";
-        progressText.textContent = state.percentage + "%";
-        processedCount.textContent = state.processed || 0;
-        extractedRows.textContent = state.extractedRows || 0;
-
-        showStatus("Extraction in progress...", "info");
-      }
+      // Restore extraction state after loading other settings
+      restoreExtractionState();
     }
   );
 
@@ -349,6 +650,15 @@ document.addEventListener("DOMContentLoaded", function () {
           progressFill.style.width = "100%";
           progressText.textContent = "100%";
 
+          // Always show error summary if there were any errors, even on success
+          if (response.errorSummary && response.errorSummary.totalErrors > 0) {
+            displayErrorSummary(response.errorSummary);
+            showStatus(
+              "Extraction completed with some errors. Check details below.",
+              "warning"
+            );
+          }
+
           // Clear extraction state
           chrome.storage.local.remove("extractionState");
         } else {
@@ -359,7 +669,10 @@ document.addEventListener("DOMContentLoaded", function () {
           );
           progressStatus.textContent = "Extraction failed!";
 
-          if (response && response.errorDetails) {
+          // Display detailed error information
+          if (response && response.errorSummary) {
+            displayErrorSummary(response.errorSummary);
+          } else if (response && response.errorDetails) {
             errorDetails.style.display = "block";
             errorDetails.textContent = response.errorDetails;
           }
@@ -368,21 +681,18 @@ document.addEventListener("DOMContentLoaded", function () {
           chrome.storage.local.remove("extractionState");
         }
 
-        setTimeout(() => {
-          progressContainer.style.display = "none";
-        }, 5000);
+        // Don't hide progress container immediately if there are errors to show
+        const hasErrors =
+          response &&
+          response.errorSummary &&
+          response.errorSummary.totalErrors > 0;
+        if (!hasErrors) {
+          setTimeout(() => {
+            progressContainer.style.display = "none";
+          }, 5000);
+        }
       }
     );
-
-    chrome.runtime.onMessage.addListener(function (
-      request,
-      sender,
-      sendResponse
-    ) {
-      if (request.action === "progressUpdate") {
-        updateProgress(request.data);
-      }
-    });
   }
 
   function cancelExtraction() {
@@ -405,32 +715,6 @@ document.addEventListener("DOMContentLoaded", function () {
     chrome.storage.local.remove("extractionState");
 
     showStatus("Extraction cancelled by user.", "warning");
-  }
-
-  function updateProgress(data) {
-    if (data.current && data.total) {
-      const percentage = Math.round((data.current / data.total) * 100);
-      progressFill.style.width = percentage + "%";
-      progressText.textContent = percentage + "%";
-      processedCount.textContent = data.current;
-      extractedRows.textContent = data.extractedRows || 0;
-
-      if (data.status) {
-        progressStatus.textContent = data.status;
-      }
-
-      // Save current progress state
-      const extractionState = {
-        inProgress: true,
-        status:
-          data.status || `Processing page ${data.current} of ${data.total}`,
-        percentage: percentage,
-        processed: data.current,
-        extractedRows: data.extractedRows || 0,
-        startTime: Date.now(),
-      };
-      chrome.storage.local.set({ extractionState: extractionState });
-    }
   }
 
   function updateUrlList() {

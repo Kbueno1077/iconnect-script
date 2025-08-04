@@ -4,6 +4,8 @@ let currentUrlIndex = 0;
 let totalUrls = 0;
 let totalExtractedRows = 0;
 let errors = [];
+let failedUrls = []; // Track failed URLs with details
+let failedCustomerNames = []; // Track failed customer names
 let extractionCancelled = false;
 
 // Listen for messages from popup
@@ -66,6 +68,8 @@ async function extractTablesFromUrls(
     totalUrls = urls.length;
     totalExtractedRows = 0;
     errors = [];
+    failedUrls = [];
+    failedCustomerNames = [];
 
     // Save extraction state to storage
     const extractionState = {
@@ -142,20 +146,22 @@ async function extractTablesFromUrls(
               }
               const pageSizeInput = pageSizeInputs[0];
 
-              // Set the value of the page size input field
-              pageSizeInput.value = amountsPerPage;
+              if (Number(amountsPerPage) > 15) {
+                // Set the value of the page size input field
+                pageSizeInput.value = amountsPerPage;
 
-              // Find and click the search button to apply the new page size
-              const searchButton = document.getElementById("cmdSearch40525");
+                // Find and click the search button to apply the new page size
+                const searchButton = document.getElementById("cmdSearch40525");
 
-              if (searchButton) {
-                searchButton.click();
-              } else {
-                console.warn("Search button not found");
+                if (searchButton) {
+                  searchButton.click();
+                } else {
+                  console.warn("Search button not found");
+                }
+
+                // Wait a moment for the page to update
+                await new Promise((resolve) => setTimeout(resolve, 5000));
               }
-
-              // Wait a moment for the page to update
-              await new Promise((resolve) => setTimeout(resolve, 5000));
 
               console.log("Page size input updated successfully");
             } catch (error) {
@@ -163,10 +169,12 @@ async function extractTablesFromUrls(
               throw error;
             }
           },
-          args: [amountsPerPage], // Pass the argument here
+          args: [amountsPerPage],
         });
 
-        await new Promise((resolve) => setTimeout(resolve, 10000));
+        if (Number(amountsPerPage) > 15) {
+          await new Promise((resolve) => setTimeout(resolve, 10000));
+        }
 
         const response = await chrome.tabs.sendMessage(tab.id, {
           action: "extractTableData",
@@ -210,7 +218,21 @@ async function extractTablesFromUrls(
           );
         } else {
           console.log(`⚠️ No data extracted from ${entryName}`);
-          errors.push(`No data found in ${entryName}`);
+          const errorMsg = `No data found in ${entryName}`;
+          errors.push(errorMsg);
+
+          // Track failed URL and customer name
+          failedUrls.push({
+            url: url,
+            customerName: entryName,
+            error: errorMsg,
+            type: "no_data",
+          });
+
+          if (entryName && !failedCustomerNames.includes(entryName)) {
+            failedCustomerNames.push(entryName);
+          }
+
           sendProgressUpdate(`No data found in ${entryName}`);
         }
 
@@ -224,7 +246,22 @@ async function extractTablesFromUrls(
         }
       } catch (error) {
         console.error(`❌ Error processing ${entryName}:`, error);
-        errors.push(`Error processing ${entryName}: ${error.message}`);
+        const errorMsg = `Error processing ${entryName}: ${error.message}`;
+        errors.push(errorMsg);
+
+        // Track failed URL and customer name with detailed error
+        failedUrls.push({
+          url: url,
+          customerName: entryName,
+          error: error.message,
+          type: "processing_error",
+          details: error.stack || error.toString(),
+        });
+
+        if (entryName && !failedCustomerNames.includes(entryName)) {
+          failedCustomerNames.push(entryName);
+        }
+
         sendProgressUpdate(`Error processing ${entryName}`);
       }
     }
@@ -239,13 +276,18 @@ async function extractTablesFromUrls(
         console.log("File saved successfully");
       } catch (error) {
         console.error("Error saving file:", error);
-        errors.push(`Error saving file: ${error.message}`);
+        const errorMsg = `Error saving file: ${error.message}`;
+        errors.push(errorMsg);
       }
 
       // Clear extraction state
       await chrome.storage.local.remove("extractionState");
 
-      sendResponse({
+      // Prepare detailed error summary
+      const errorSummary = prepareErrorSummary();
+
+      // Save the result for popup to show when it reopens
+      const result = {
         success: true,
         message: `Extraction completed! Extracted ${combinedData.totalRows} rows from ${allExtractedData.length} pages.`,
         stats: {
@@ -253,17 +295,33 @@ async function extractTablesFromUrls(
           successfulPages: allExtractedData.length,
           totalRows: combinedData.totalRows,
           errors: errors.length,
+          failedUrls: failedUrls.length,
+          failedCustomerNames: failedCustomerNames.length,
         },
-      });
+        errorSummary: errorSummary,
+      };
+
+      await chrome.storage.local.set({ extractionResult: result });
+
+      sendResponse(result);
     } else {
       // Clear extraction state
       await chrome.storage.local.remove("extractionState");
 
-      sendResponse({
+      // Prepare detailed error summary
+      const errorSummary = prepareErrorSummary();
+
+      // Save the result for popup to show when it reopens
+      const result = {
         success: false,
         error: "No data was extracted from any URL",
         errorDetails: errors.join("\n"),
-      });
+        errorSummary: errorSummary,
+      };
+
+      await chrome.storage.local.set({ extractionResult: result });
+
+      sendResponse(result);
     }
   } catch (error) {
     console.error("Fatal error:", error);
@@ -271,11 +329,20 @@ async function extractTablesFromUrls(
     // Clear extraction state
     await chrome.storage.local.remove("extractionState");
 
-    sendResponse({
+    // Prepare detailed error summary
+    const errorSummary = prepareErrorSummary();
+
+    // Save the result for popup to show when it reopens
+    const result = {
       success: false,
       error: error.message,
       errorDetails: errors.join("\n") + "\n\nFatal error: " + error.message,
-    });
+      errorSummary: errorSummary,
+    };
+
+    await chrome.storage.local.set({ extractionResult: result });
+
+    sendResponse(result);
   }
 }
 
@@ -321,6 +388,8 @@ function combineAllData() {
       totalSitesProcessed: totalUrls,
       successfulExtractions: allExtractedData.length,
       errors: errors,
+      failedUrls: failedUrls,
+      failedCustomerNames: failedCustomerNames,
     },
     consumerNames: [],
     totalRows: 0,
@@ -365,6 +434,49 @@ function combineAllData() {
   combined.totalRows = combined.rows.length;
   console.log("🚀 ~ Data To Download ~ combined:", combined);
   return combined;
+}
+
+// New function to prepare detailed error summary
+function prepareErrorSummary() {
+  const summary = {
+    totalErrors: errors.length,
+    failedUrls: failedUrls.length,
+    failedCustomerNames: failedCustomerNames.length,
+    errorDetails: [],
+  };
+
+  // Group errors by type
+  const noDataErrors = failedUrls.filter((f) => f.type === "no_data");
+  const processingErrors = failedUrls.filter(
+    (f) => f.type === "processing_error"
+  );
+
+  if (noDataErrors.length > 0) {
+    summary.errorDetails.push({
+      type: "No Data Found",
+      count: noDataErrors.length,
+      items: noDataErrors.map((f) => ({
+        customerName: f.customerName,
+        url: f.url,
+        error: f.error,
+      })),
+    });
+  }
+
+  if (processingErrors.length > 0) {
+    summary.errorDetails.push({
+      type: "Processing Errors",
+      count: processingErrors.length,
+      items: processingErrors.map((f) => ({
+        customerName: f.customerName,
+        url: f.url,
+        error: f.error,
+        details: f.details,
+      })),
+    });
+  }
+
+  return summary;
 }
 
 async function saveToFile(data) {
