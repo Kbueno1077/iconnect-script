@@ -269,7 +269,7 @@ async function extractTablesFromUrls(
     // Process and save results
     if (allExtractedData.length > 0) {
       sendProgressUpdate(`Saving results...`);
-      const combinedData = combineAllData();
+      const combinedData = combineAllData(startDate, endDate);
 
       try {
         await saveToFile(combinedData);
@@ -380,7 +380,7 @@ function sendProgressUpdate(status = null) {
     });
 }
 
-function combineAllData() {
+function combineAllData(startDate = "", endDate = "") {
   const combined = {
     extractionInfo: {
       extractionDate: new Date().toISOString(),
@@ -390,6 +390,8 @@ function combineAllData() {
       errors: errors,
       failedUrls: failedUrls,
       failedCustomerNames: failedCustomerNames,
+      startDate: startDate,
+      endDate: endDate,
     },
     consumerNames: [],
     totalRows: 0,
